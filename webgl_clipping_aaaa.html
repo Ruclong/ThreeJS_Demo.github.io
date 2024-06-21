@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>切割测试</title> <!-- 网页标题 -->
+	<meta charset="utf-8"> <!-- 字符编码设置为UTF-8，支持中文 -->
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<!-- 视口设置 -->
+	<link type="text/css" rel="stylesheet" href="main.css"> <!-- 引入外部样式表 -->
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+	<script src="https://d3js.org/d3.v6.min.js"></script>
+	<!-- 引入d3-delaunay库 -->
+	<script src="https://d3js.org/d3-delaunay.v6.min.js"></script>
+</head>
+
+<body>
+	<select id="viewportSelect" style="position: absolute; bottom: 110px; left: 160px; z-index: 1000;">
+		<option value="top">顶部视图</option>
+		<option value="side">侧视图</option>
+	</select>
+	<script type="importmap">
+		{
+			"imports": {
+				"three": "https://unpkg.com/three@0.136.0/build/three.module.js",
+				"three/addons/": "https://unpkg.com/three@0.136.0/examples/jsm/"
+			}
+		}
+	</script>
+
+	<script type="module">
+		// 导入所需的模块
+		import * as THREE from 'three'; // 引入Three.js库
+		import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // 引入轨道控制器模块
+		import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js'; // 引入改进的噪声模块
+		import { FontLoader } from 'three/addons/loaders/FontLoader.js';  // 导入字体加载器
+		import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+		import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+
+		let selectedViewport = 'top'; // 默认选择顶部视图
+
+		document.getElementById('viewportSelect').addEventListener('change', function (event) {
+			selectedViewport = event.target.value; // 更新选择的视口类型
+		});
+		//主摄像机，场景
+		let camera, scene, sceneInset, renderer, object;
+		let planes, planeObjects, planeHelpers;
+		let camera2, camera3; // 辅助相机
+		let raycaster, mouse, points = [], line;
+		let insetWidth, insetHeight, sideWidth, sideHeight; // 辅助视口宽高
+		let plane;
+		//世界网格
+		const worldWidth = 40, worldDepth = 40;
+		// GUI组
+		let group, shanxiGroup, taiyuanGroup, xiashiheGroup, topBottomGroup, drillHolesGroup, coalSeamGroup;
+		let mesh, texture; // 地形网格和纹理
+		// 坐标信息
+		const data = [
+			[3851670.65, 38.2, 39481878.68],
+			[3853451.44, 38.23, 39484801.52],
+			[3851810.89, 37.82, 39481631.88],
+			[3852522.8, 38.23, 39483501.3],
+			[3852715.0, 36.92, 39484939.3],
+			[3851786.38, 38.8, 39479075.57],
+			[3852217.16, 36.6, 39485594.02],
+			[3852948.51, 37.97, 39484500.95],
+			[3852280.13, 37.84, 39482546.22],
+			[3851173.66, 38.64, 39482247.78],
+			[3851418.06, 38.2, 39482737.02],
+			[3851919.48, 38.98, 39480564.63],
+			[3851362.04, 38.68, 39479184.14],
+			[3853347.0, 36.95, 39488599.33],
+			[3853900.1, 37.27, 39486757.05],
+			[3851318.47, 38.56, 39482763.89],
+			[3850798.76, 38.78, 39481359.99],
+			[3853388.1, 37.71, 39485779.46],
+			[3851225.34, 38.1, 39478667.74],
+			[3853284.63, 37.2, 39488088.44],
+			[3852434.81, 38.13, 39482941.04],
+			[3850995.32, 39.22, 39479287.55],
+			[3852578.63, 37.31, 39485524.95],
+			[3851072.61, 38.74, 39480224.97],
+			[3851620.91, 37.69, 39484670.85],
+			[3852508.07, 40.05, 39478841.57],
+			[3852405.35, 36.99, 39487099.04],
+			[3852095.66, 37.89, 39484579.68],
+			[3852082.86, 37.76, 39482008.59],
+			[3850804.04, 38.71, 39480895.0],
+			[3851599.62, 37.07, 39483701.5],
+			[3852193.78, 38.15, 39483571.82],
+			[3851017.38, 38.68, 39480840.42],
+			[3851656.04, 38.91, 39480090.83],
+			[3852108.72, 36.92, 39486603.36],
+			[3853764.18, 37.15, 39488471.36],
+			[3850682.06, 39.25, 39479950.29],
+			[3851915.71, 36.73, 39485160.93],
+			[3850571.09, 39.21, 39479415.78],
+			[3853646.32, 37.79, 39484801.52],
+			[3853224.42, 37.07, 39483790.33],
+			[3852370.44, 37.38, 39486511.78],
+			[3851640.54, 38.92, 39479652.31],
+			[3852586.33, 37.87, 39484473.89],
+			[3851501.7, 38.01, 39480829.33],
+			[3854091.09, 37.22, 39487884.24],
+			[3853585.4, 37.33, 39487483.9],
+			[3852135.03, 37.29, 39487162.06],
+			[3850921.64, 39.33, 39480269.95],
+			[3850769.02, 39.47, 39480304.59],
+			[3851666.26, 37.65, 39484188.2],
+			[3853381.6, 38.56, 39482686.05],
+			[3852690.36, 37.68, 39486446.43],
+			[3850932.72, 39.23, 39479866.22],
+			[3851752.66, 37.56, 39484670.85],
+			[3851639.3, 38.06, 39482693.47],
+			[3852311.26, 38.25, 39483546.3],
+			[3852917.81, 37.53, 39483402.26],
+			[3851767.21, 38.66, 39481103.75],
+			[3852091.75, 37.34, 39486154.47],
+			[3850686.92, 39.17, 39478797.66],
+			[3852748.68, 38.95, 39480650.72],
+			[3851102.2, 38.28, 39478181.56],
+			[3850497.0, 39.42, 39478850.5],
+			[3851868.33, 36.88, 39485684.43],
+			[3853146.38, 36.78, 39487573.63],
+			[3854357.71, 37.56, 39485624.96],
+			[3851151.03, 38.8, 39481757.93],
+			[3851919.79, 38.19, 39482626.91]
+		];
+		const drillData = [
+			[3851670.65, 39481878.68, 38.2, -490.77],
+			[3853451.44, 39484801.52, 38.23, -780.03],
+			[3851810.89, 39481631.88, 37.82, -730.81],
+			[3852522.8, 39483501.3, 38.23, -681.76],
+			[3852715, 39484939.3, 36.92, -705.31],
+			[3851786.38, 39479075.57, 38.8, -860.32],
+			[3852217.16, 39485594.02, 36.6, -508.68],
+			[3852948.51, 39484500.95, 37.97, -603.43],
+			[3852280.13, 39482546.22, 37.84, -784.23],
+			[3851173.66, 39482247.78, 38.64, -367.55],
+			[3851620.91, 39484670.85, 37.69, -317.08],
+			[3851418.06, 39482737.02, 38.2, -375.98],
+			[3851919.48, 39480564.63, 38.98, -691.99],
+			[3851362.04, 39479184.14, 38.68, -552.18],
+			[3853900.1, 39486757.05, 37.27, -868.04],
+			[3851318.47, 39482763.89, 38.56, -365.39],
+			[3850798.76, 39481359.99, 38.78, -348.98],
+			[3853388.1, 39485779.46, 37.71, -850.26],
+			[3851225.34, 39478667.74, 38.1, -517.81],
+			[3853284.63, 39488088.44, 37.2, -813.65],
+			[3853347, 39488599.33, 36.95, -550.61],
+			[3852434.81, 39482941.04, 38.13, -800.93],
+			[3850995.32, 39479287.55, 39.22, -562.33],
+			[3852578.63, 39485524.95, 37.31, -645.56],
+			[3851072.61, 39480224.97, 38.74, -511.41],
+			[3852508.07, 39478841.57, 40.05, -986],
+			[3852405.35, 39487099.04, 36.99, -332.91],
+			[3852095.66, 39484579.68, 37.89, -524.73],
+			[3852082.86, 39482008.59, 37.76, -791.09],
+			[3850804.04, 39480895, 38.71, -418.33],
+			[3851599.62, 39483701.5, 37.07, -365.25],
+			[3852193.78, 39483571.82, 38.15, -432.91],
+			[3851017.38, 39480840.42, 38.68, -346.2],
+			[3851656.04, 39480090.83, 38.91, -765.27],
+			[3852108.72, 39486603.36, 36.92, -315.82],
+			[3853764.18, 39488471.36, 37.15, -762.04],
+			[3850682.06, 39479950.29, 39.25, -436.97],
+			[3851915.71, 39485160.93, 36.73, -389.22],
+			[3850571.09, 39479415.78, 39.21, -356.57],
+			[3853646.32, 39484801.52, 37.79, -693.47],
+			[3853224.42, 39483790.33, 37.07, -791.35],
+			[3852370.44, 39486511.78, 37.38, -494.25],
+			[3851640.54, 39479652.31, 38.92, -791.35],
+			[3852586.33, 39484473.89, 37.87, -671.86],
+			[3851501.7, 39480829.33, 38.01, -547.88],
+			[3854091.09, 39487884.24, 37.22, -829.63],
+			[3853585.4, 39487483.9, 37.33, -920.58],
+			[3852135.03, 39487162.06, 37.29, -410.52],
+			[3850921.64, 39480269.95, 39.33, -372.37],
+			[3850769.02, 39480304.59, 39.47, -455.78],
+			[3851666.26, 39484188.2, 37.65, -362.05],
+			[3853381.6, 39482686.05, 38.56, -892.38],
+			[3852690.36, 39486446.43, 37.68, -630.99],
+			[3850932.72, 39479866.22, 39.23, -518.04],
+			[3851752.66, 39484670.85, 37.56, -334.66],
+			[3851639.3, 39482693.47, 38.06, -314.2],
+			[3852311.26, 39483546.3, 38.25, -587.15],
+			[3852917.81, 39483402.26, 37.53, -734.75],
+			[3851767.21, 39481103.75, 38.66, -580.77],
+			[3852091.75, 39486154.47, 37.34, -358.25],
+			[3850686.92, 39478797.66, 39.17, -324.51],
+			[3852748.68, 39480650.72, 38.95, -926.78],
+			[3851102.2, 39478181.56, 38.28, -625.44],
+			[3850497, 39478850.5, 39.42, -394.46],
+			[3851868.33, 39485684.43, 36.88, -313.57],
+			[3853146.38, 39487573.63, 36.78, -760.58],
+			[3854357.71, 39485624.96, 37.56, -1002],
+			[3851151.03, 39481757.93, 38.8, -439.23],
+			[3851919.79, 39482626.91, 38.19, -645.86],
+		];
+		let gui; // 在全局作用域声明 GUI 变量
+		// GUI中参数
+		let params = {
+			planeX: {
+				constant: 5000,
+				negated: false,
+				displayHelper: false
+			},
+			planeY: {
+				constant: 5000,
+				negated: false,
+				displayHelper: false
+			},
+			planeZ: {
+				constant: 8000,
+				negated: false,
+				displayHelper: false,
+				normalX: 0,
+				normalY: 0,
+				normalZ: 0
+			},
+			showDrillHoles: false,
+			drillHolesOpacity: 1,
+			showShanxi: true,
+			shanxiOpacity: 1,
+			showTaiyuan: true,
+			taiyuanOpacity: 1,
+			showXiashihe: true,
+			xiashiheOpacity: 1,
+			showTopBottom: true,
+			topBottomOpacity: 1,
+			showTerrain: true,
+			opacity: 1,
+		};
+
+		// 创建三个切割面
+		planes = [
+			new THREE.Plane(new THREE.Vector3(-1, 0, 0), 5000),
+			new THREE.Plane(new THREE.Vector3(0, -1, 0), 5000),
+			// new THREE.Plane(new THREE.Vector3(1, 0.33,0.92), 8000)
+			new THREE.Plane(new THREE.Vector3(0, 0, -1), 8000)
+
+		];
+
+		init(); // 初始化
+
+		async function init() {
+			// 创建主场景
+			scene = new THREE.Scene();
+			// 创建辅助场景，用于显示左下角的小视口
+			sceneInset = new THREE.Scene();
+
+			// 创建透视摄像机
+			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 50000);
+			camera.position.set(-15000, 5000, 0);
+			camera.lookAt(0, 0, 0);
+
+			// 初始化辅助顶部视角摄像机
+			camera2 = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 50000);
+			camera2.position.set(0, 11000, 0);
+			camera2.lookAt(0, 0, 0);
+
+			// 初始化侧面视角摄像机
+			camera3 = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 50000);
+			camera3.position.set(-12000, 0, 0);
+			camera3.lookAt(0, 0, 0);
+
+			// 添加灯光
+			addLight();
+
+			// 初始化切割面
+			planes = [
+				new THREE.Plane(new THREE.Vector3(-1, 0, 0), 5000),
+				new THREE.Plane(new THREE.Vector3(0, -1, 0), 5000),
+				new THREE.Plane(new THREE.Vector3(0, 0, -1), 8000)
+			];
+
+			// 为每个切割面添加辅助线
+			// planeHelpers = planes.map(p => new THREE.PlaneHelper(p, 7800, 0xffffff));
+			// planeHelpers.forEach(ph => {
+			// 	ph.visible = false; // 默认隐藏辅助线
+			// 	scene.add(ph);
+			// });
+
+			// 初始化组
+			group = new THREE.Group();
+			scene.add(group);
+
+			shanxiGroup = new THREE.Group();
+			taiyuanGroup = new THREE.Group();
+			xiashiheGroup = new THREE.Group();
+			topBottomGroup = new THREE.Group();
+			drillHolesGroup = new THREE.Group();
+			coalSeamGroup = new THREE.Group();
+
+			scene.add(shanxiGroup);
+			scene.add(taiyuanGroup);
+			scene.add(xiashiheGroup);
+			scene.add(topBottomGroup);
+			scene.add(drillHolesGroup);
+			scene.add(coalSeamGroup);
+
+			// 定义几何体的颜色
+			const colors = [
+				0xff0000, // 红色
+				0x00ff00, // 绿色
+				0x0000ff, // 蓝色
+				0xffff00,  // 黄色
+				0x000000, // 黑色
+			];
+
+			const coalGeometry = await fetchHoleData();
+			const shanxiGeometry = await fetchShanxiData();
+			const taiyuanGeometry = await fetchTaiyuanData();
+			const xiashiheGeometry = await fetchXiashihrData();
+
+			object = new THREE.Group();
+			scene.add(object);
+
+			// 模拟顶部网格
+			const size = 10000;
+			const divisions = 43;
+			const helper = new THREE.GridHelper(size, divisions);
+			helper.position.y = 0;
+			helper.position.x = -10000;
+			helper.position.z = 0;
+			helper.material.opacity = 0.5;
+			helper.material.transparent = true;
+			// 旋转 GridHelper 使其铺满整个屏幕
+			helper.rotateZ(Math.PI / 2); // 旋转90度，使其铺满屏幕
+			// scene.add(helper);
+
+			// 初始化 GUI
+			gui = new GUI();
+			addGUI(); // 调用添加 GUI 控件的函数
+
+			// 对几何体进行切割
+			createZhu(coalGeometry, colors[4]); // 黑色
+			createZhu(shanxiGeometry, colors[0]); // 红色
+			createZhu(taiyuanGeometry, colors[1]); // 绿色
+			createZhu(xiashiheGeometry, colors[2]); // 蓝色
+
+			// 钻孔
+			addDrillHoles();
+			// 外壳
+			createTopBottom();
+
+			// 创建渲染器
+			Renderer();
+			// 添加控制器
+			Controls();
+
+			// 将网格辅助器添加到辅助场景中(侧面)
+			const insetGridHelperSide = new THREE.GridHelper(10000, 37);
+			insetGridHelperSide.material.transparent = true;
+			insetGridHelperSide.material.opacity = 1;
+			insetGridHelperSide.position.x = -11000;
+			insetGridHelperSide.rotateZ(Math.PI / 2)
+			sceneInset.add(insetGridHelperSide);
+
+			// 将网格辅助器添加到辅助场景中(侧面)
+			const GridHelperTop = new THREE.GridHelper(10000, 37);
+			GridHelperTop.material.transparent = true;
+			GridHelperTop.material.opacity = 1;
+			GridHelperTop.position.y = 10000;
+			GridHelperTop.rotateY(Math.PI / 2)
+			sceneInset.add(GridHelperTop);
+			// 将主场景内容复制到辅助场景中
+			scene.children.forEach(child => {
+				sceneInset.add(child.clone());
+			});
+		}
+
+		async function fetchHoleData() {
+			try {
+				const response = await fetch('csv/9煤层及预测9煤.csv');
+				const data = await response.text();
+
+				const parsedData = Papa.parse(data, {
+					header: true,
+					dynamicTyping: true
+				}).data;
+				return parsedData;
+			} catch (error) {
+				console.error("Error fetching hole data:", error);
+			}
+		}
+
+		async function fetchTaiyuanData() {
+			try {
+				const response = await fetch('csv/太原组.csv');
+				const data = await response.text();
+
+				const parsedData = Papa.parse(data, {
+					header: true,
+					dynamicTyping: true
+				}).data;
+				return parsedData;
+			} catch (error) {
+				console.error("Error fetching hole data:", error);
+			}
+		}
+
+		async function fetchShanxiData() {
+			try {
+				const response = await fetch('csv/山西组.csv');
+				const data = await response.text();
+
+				const parsedData = Papa.parse(data, {
+					header: true,
+					dynamicTyping: true
+				}).data;
+				return parsedData;
+			} catch (error) {
+				console.error("Error fetching hole data:", error);
+			}
+		}
+
+		async function fetchXiashihrData() {
+			try {
+				const response = await fetch('csv/下石盒子.csv');
+				const data = await response.text();
+
+				const parsedData = Papa.parse(data, {
+					header: true,
+					dynamicTyping: true
+				}).data;
+				return parsedData;
+			} catch (error) {
+				console.error("Error fetching hole data:", error);
+			}
+		}
+
+		//创建组
+		async function createZhu(holeData, color) {
+			let verticeTop = [], verticeBottom = [];
+			const drillDataX = drillData.map(item => item[0]);
+			const drillDataY = drillData.map(item => item[1]);
+			const minX = Math.min(...drillDataX);
+			const maxX = Math.max(...drillDataX);
+			const minY = Math.min(...drillDataY);
+			const maxY = Math.max(...drillDataY);
+
+			const data = holeData.map(row => [row['Y'], row['X'], row['top'], row['bottom'], row['id']]);
+			const filteredData = data.filter(row => row[0] != null || row[1] != null);
+
+			const points = filteredData.map(row => [row[0], row[1]]);
+			const hull = grahamScan(points);
+			const boundaryData = hull.map(point => {
+				const original = data.find(row => row[0] === point[0] && row[1] === point[1]);
+				return { 'id': original[4], 'Y': point[0], 'X': point[1], 'top': original[2], 'bottom': original[3], };
+			});
+
+			const boundaryVertices = [];
+			const boundaryIndices = [];
+
+			boundaryData.forEach((v, i) => {
+				const xNorm = ((v.X - minX) / (maxX - minX) * 7800 - 3900) * 0.9;
+				const yNorm = ((v.Y - minY) / (maxY - minY) * 7800 - 3900) * 0.9;
+				boundaryVertices.push(yNorm, -v.top * 3, xNorm);
+				boundaryVertices.push(yNorm, -v.bottom * 3, xNorm);
+
+				const nextIndex = (i + 1) % boundaryData.length;
+				boundaryIndices.push(i * 2, nextIndex * 2, nextIndex * 2 + 1);
+				boundaryIndices.push(nextIndex * 2 + 1, i * 2 + 1, i * 2);
+			});
+
+			for (let i = 0; i < holeData.length; i++) {
+				let normX = (holeData[i].X - minX) / (maxX - minX) * 7800 - 3900;
+				let normZ = (holeData[i].Y - minY) / (maxY - minY) * 7800 - 3900;
+				verticeTop.push(normZ * 0.9, -holeData[i].top * 3, normX * 0.9);
+				verticeBottom.push(normZ * 0.9, -holeData[i].bottom * 3, normX * 0.9);
+			}
+
+			const indicesTop = TIN(verticeTop);
+			const indicesBottom = TIN(verticeBottom);
+
+			const geometryTop = new THREE.BufferGeometry();
+			geometryTop.setAttribute('position', new THREE.Float32BufferAttribute(verticeTop, 3));
+			geometryTop.setIndex(indicesTop);
+			geometryTop.computeVertexNormals();
+
+			const geometryBottom = new THREE.BufferGeometry();
+			geometryBottom.setAttribute('position', new THREE.Float32BufferAttribute(verticeBottom, 3));
+			geometryBottom.setIndex(indicesBottom);
+			geometryBottom.computeVertexNormals();
+
+			const geometryBoundary = new THREE.BufferGeometry();
+			geometryBoundary.setAttribute('position', new THREE.Float32BufferAttribute(boundaryVertices, 3));
+			geometryBoundary.setIndex(boundaryIndices);
+			geometryBoundary.computeVertexNormals();
+
+			// 合并几何体
+			const mergedGeometry = BufferGeometryUtils.mergeBufferGeometries([geometryTop, geometryBottom, geometryBoundary]);
+
+			Clip(mergedGeometry, color)
+
+		}
+
+		// 三角剖分计算绘制顺序 ,返回值 return indices
+		function performDelaunay(vertices) {
+			//取x,z坐标，存到points2D中，算出绘制顺序，用以三角剖分
+			let points2D = [];
+			for (let i = 0; i < vertices.length; i += 3) {
+				points2D.push([vertices[i], vertices[i + 2]]);
+			}
+
+			const delaunay = d3.Delaunay.from(points2D);
+			const triangles = new Uint32Array(delaunay.triangles);
+			const indices = [];
+			for (let i = 0; i < triangles.length; i += 3) {
+				indices.push(triangles[i], triangles[i + 1], triangles[i + 2]);
+			}
+			return indices
+		}
+
+		// 将质心添加上去,返回值vertices
+		function addCentroidsToVertices(vertices, centroids) {
+			centroids.forEach(centroid => {
+				vertices.push(centroid[0], centroid[1], centroid[2]);
+			});
+			return vertices;
+		}
+
+		// 计算质心,返回值return centroids
+		function calculateCentroids(vertices, indices) {
+			let centroids = [];
+			for (let i = 0; i < indices.length; i += 3) {
+				const v1 = indices[i] * 3;
+				const v2 = indices[i + 1] * 3;
+				const v3 = indices[i + 2] * 3;
+				const centroid = [
+					(vertices[v1] + vertices[v2] + vertices[v3]) / 3,
+					(vertices[v1 + 1] + vertices[v2 + 1] + vertices[v3 + 1]) / 3,
+					(vertices[v1 + 2] + vertices[v2 + 2] + vertices[v3 + 2]) / 3,
+				];
+				centroids.push(centroid);
+			}
+			return centroids;
+		}
+
+		// 执行多次三角剖分
+		function TIN(verticeTop) {
+			for (let i = 0; i < 7; i++) {
+				let index = performDelaunay(verticeTop);
+				let centroids = calculateCentroids(verticeTop, index);
+				verticeTop = addCentroidsToVertices(verticeTop, centroids);
+			}
+			let indices = performDelaunay(verticeTop);
+			return indices
+		}
+
+		//计算外围点扫描算法
+		function grahamScan(points) {
+			points.sort((a, b) => a[1] === b[1] ? a[0] - b[0] : a[1] - b[1]);
+			const n = points.length;
+			const lower = [];
+			for (let i = 0; i < n; i++) {
+				while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], points[i]) <= 0) {
+					lower.pop();
+				}
+				lower.push(points[i]);
+			}
+			const upper = [];
+			for (let i = n - 1; i >= 0; i--) {
+				while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], points[i]) <= 0) {
+					upper.pop();
+				}
+				upper.push(points[i]);
+			}
+			lower.pop();
+			upper.pop();
+			return lower.concat(upper);
+		}
+
+		function cross(o, a, b) {
+			return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+		}
+
+		function createTopBottom() {
+			const drillDataX = drillData.map(item => item[0]);
+			const drillDataY = drillData.map(item => item[1]);
+			const minX = Math.min(...drillDataX);
+			const maxX = Math.max(...drillDataX);
+			const minY = Math.min(...drillDataY);
+			const maxY = Math.max(...drillDataY);
+
+			let arryTop = [];
+			for (let g = 0; g < drillData.length; g++) {
+				arryTop.push([drillData[g][0], drillData[g][2], drillData[g][1]]);
+			}
+			const geometry = new THREE.PlaneGeometry(7800, 7800, worldWidth - 1, worldDepth - 1);
+			geometry.rotateX(-Math.PI / 2);
+			geometry.rotateY(Math.PI / 2); // 旋转以匹配地形
+			let vertices = geometry.attributes.position.array;
+			const normalizedData = normalizeDatas(arryTop);
+			cubicSplineInterpolation(normalizedData, vertices);
+			for (let i = 0, j = 0; i < vertices.length; i++, j += 3) {
+				vertices[j + 1] += 1250;
+			}
+			geometry.attributes.position.needsUpdate = true; // 此行非常重要
+
+			let arryBottom = [];
+			for (let g = 0; g < drillData.length; g++) {
+				arryBottom.push([drillData[g][0], drillData[g][3], drillData[g][1]]);
+			}
+			// 创建一个新的平面几何体，尺寸与地形相同
+			const planeGeometry = new THREE.PlaneGeometry(7800, 7800, worldWidth - 1, worldDepth - 1);
+			planeGeometry.rotateX(-Math.PI / 2); // 旋转以匹配地形
+			planeGeometry.rotateY(Math.PI / 2); // 旋转以匹配地形
+			// 使用arry数组调整顶点位置
+			const vertices2 = planeGeometry.attributes.position.array;
+			const normalizedData2 = normalizeDatas(arryBottom);
+			cubicSplineInterpolation(normalizedData2, vertices2);
+			for (let i = 0, j = 0; i < vertices2.length; i++, j += 3) {
+				vertices2[j + 1] -= 3250;
+			}
+			planeGeometry.attributes.position.needsUpdate = true;
+
+			// 侧面
+			const createSide = (topIndices, bottomIndices) => {
+				const sideVertices = [];
+				const sideIndices = [];
+
+				for (let i = 0; i < topIndices.length; i++) {
+					const topIndex = topIndices[i];
+					const bottomIndex = bottomIndices[i];
+					sideVertices.push(vertices[topIndex * 3], vertices[topIndex * 3 + 1], vertices[topIndex * 3 + 2]);
+					sideVertices.push(vertices2[bottomIndex * 3], vertices2[bottomIndex * 3 + 1], vertices2[bottomIndex * 3 + 2]);
+				}
+
+				for (let i = 0; i < topIndices.length - 1; i++) {
+					const topLeft = i * 2;
+					const bottomLeft = i * 2 + 1;
+					const topRight = (i + 1) * 2;
+					const bottomRight = (i + 1) * 2 + 1;
+
+					sideIndices.push(topLeft, bottomLeft, topRight);
+					sideIndices.push(bottomLeft, bottomRight, topRight);
+				}
+
+				const sideGeometry = new THREE.BufferGeometry();
+				sideGeometry.setAttribute('position', new THREE.Float32BufferAttribute(sideVertices, 3));
+				sideGeometry.setIndex(sideIndices);
+				sideGeometry.computeVertexNormals();
+
+				return sideGeometry;
+			};
+
+			const rowVertices = worldWidth;
+			const columnVertices = worldDepth;
+
+			// 前后左右四个面的顶点索引
+			const topFrontIndices = Array.from({ length: rowVertices }, (_, i) => i);
+			const bottomFrontIndices = Array.from({ length: rowVertices }, (_, i) => i);
+			const topBackIndices = Array.from({ length: rowVertices }, (_, i) => (columnVertices - 1) * rowVertices + i);
+			const bottomBackIndices = Array.from({ length: rowVertices }, (_, i) => (columnVertices - 1) * rowVertices + i);
+			const topLeftIndices = Array.from({ length: columnVertices }, (_, i) => i * rowVertices);
+			const bottomLeftIndices = Array.from({ length: columnVertices }, (_, i) => i * rowVertices);
+			const topRightIndices = Array.from({ length: columnVertices }, (_, i) => (i + 1) * rowVertices - 1);
+			const bottomRightIndices = Array.from({ length: columnVertices }, (_, i) => (i + 1) * rowVertices - 1);
+
+			const frontGeometry = createSide(topFrontIndices, bottomFrontIndices);
+			const backGeometry = createSide(topBackIndices, bottomBackIndices);
+			const leftGeometry = createSide(topLeftIndices, bottomLeftIndices);
+			const rightGeometry = createSide(topRightIndices, bottomRightIndices);
+
+			// 确保所有几何体具有相同的属性，并移除不一致的 `uv` 属性
+			const geometries = [geometry, planeGeometry, frontGeometry, backGeometry, leftGeometry, rightGeometry];
+			const attributes = ['position', 'normal'];
+
+			geometries.forEach(geom => {
+				attributes.forEach(attr => {
+					if (!geom.attributes[attr]) {
+						const itemSize = (attr === 'position' || attr === 'normal') ? 3 : 2;
+						geom.setAttribute(attr, new THREE.BufferAttribute(new Float32Array(geom.attributes.position.array.length / 3 * itemSize), itemSize));
+					}
+				});
+				if (geom.attributes.uv) {
+					geom.deleteAttribute('uv');
+				}
+			});
+
+			// 合并几何体
+			const mergedGeometry = BufferGeometryUtils.mergeBufferGeometries(geometries, true);
+			// 添加几何体材质
+			const material = new THREE.MeshStandardMaterial({
+				color: 0x4B3621,
+				metalness: 0.1,
+				roughness: 0.75,
+				clippingPlanes: planes,
+				clipShadows: false,
+				side: THREE.DoubleSide,
+				opacity: 1,
+				transparent: true
+			});
+			const clippedColorFront = new THREE.Mesh(mergedGeometry, material);
+			clippedColorFront.renderOrder = 1; // 确保地形先渲染
+			topBottomGroup.add(clippedColorFront); // 添加到 topBottomGroup 中
+			// Clip(mergedGeometry, 0x4B3621)
+		}
+
+		//钻孔
+		async function addDrillHoles() {
+			// 从 CSV 文件获取数据
+			const parsedData = await fetchHoleData();
+			const holeData = parsedData.reduce((acc, item) => {
+				let borehole = acc.find(b => b.id === item.id);
+				if (!borehole) {
+					borehole = {
+						id: item.id,
+						Y: item.Y,
+						X: item.X,
+						T: item.t,
+						data: []
+					};
+					acc.push(borehole);
+				}
+				borehole.data.push({ name: item.name, top: item.top, bottom: item.bottom });
+				return acc;
+			}, []);
+			const colorMap = {
+				"9煤": 0x1C1C1C, // 极浅灰色
+				// "煤": 0x1C1C1C, // 黑色
+			};
+
+
+			holeData.forEach(drill => {
+
+				drill.data.forEach(layer => {
+					const xs = drill.X;
+					const ys = drill.Y;
+					const height = layer.bottom - layer.top;
+					// 更精确的坐标归一化方法
+					let normX = (xs - Math.min(...drillData.map(item => item[0]))) / (Math.max(...drillData.map(item => item[0])) - Math.min(...drillData.map(item => item[0]))) * 7800 - 3900;
+					let normZ = (ys - Math.min(...drillData.map(item => item[1]))) / (Math.max(...drillData.map(item => item[1])) - Math.min(...drillData.map(item => item[1]))) * 7800 - 3900;
+					// 调整钻孔的高度计算方法，使其基于地表以下深度
+					const geometry = new THREE.CylinderGeometry(30, 30, height, 32);
+					const material = new THREE.MeshBasicMaterial({
+						color: colorMap[layer.name] || 0xFFFFFF,
+						transparent: true,
+						opacity: 1
+					});
+					const cylinder = new THREE.Mesh(geometry, material);
+					// 根据实际坐标调整钻孔位置
+					cylinder.position.set(normZ * 0.9, -layer.top, normX * 0.9); // 高度的中点应该是地表下的中间位置
+					drillHolesGroup.add(cylinder); // 添加到 drillHolesGroup 而不是 scene
+					// 加载字体
+					const loader = new FontLoader();
+					loader.load('fonts/helvetiker_regular.typeface.json', function (font) {
+
+						let color = new THREE.Color(0x000000);  // 文本颜色
+						if (drill.T === -1) {
+							color = 0xff0000
+						}
+						if (drill.T === 8) {
+							color = 0x0000ff
+						}
+						// 创建材质
+
+						const matLite = new THREE.MeshBasicMaterial({
+							color: color,
+							transparent: true,
+							opacity: 1,
+							side: THREE.DoubleSide
+						});
+
+						const message = drill.id + "\nH:" + height.toFixed(2);  // 要显示的文本
+
+						// 生成文本的形状
+						const shapes = font.generateShapes(message, 30);
+
+						// 创建几何体
+						const geometry = new THREE.ShapeGeometry(shapes);
+
+						geometry.computeBoundingBox();
+
+						// 计算文本的水平居中偏移量
+						const xMid = -0.5 * (geometry.boundingBox.max.x - geometry.boundingBox.min.x);
+
+						// 将几何体水平居中
+						geometry.translate(xMid, 0, 0);
+
+						// 创建文本网格
+						const text = new THREE.Mesh(geometry, matLite);
+						text.position.set(normZ * 0.9 + 100, -layer.top, normX * 0.9);  // 设置文本的Z轴位置
+						drillHolesGroup.add(text); // 添加到 drillHolesGroup 而不是 scene
+					}); // 加载字体结束
+				});
+			})
+		}
+
+		function normalizeDatas(data) {
+			data.sort((a, b) => a[2] - b[2]);
+			const xs = data.map(item => item[0]);
+			const ys = data.map(item => item[1]);
+			const zs = data.map(item => item[2]);
+
+			const minMax = (values) => {
+				const min = Math.min(...values);
+				const max = Math.max(...values);
+				return { min, max };
+			};
+
+			const { min: minX, max: maxX } = minMax(xs);
+			const { min: minY, max: maxY } = minMax(ys);
+			const { min: minZ, max: maxZ } = minMax(zs);
+
+
+			return data.map(([x, y, z], index) => {
+				let normX = Math.round((((x - minX) / (maxX - minX) * 2) - 1) * 3900 / 100) * 100;
+				let normY = Math.round((((y - minY) / (maxY - minY) * 2))) * 1;
+				let normZ = Math.round((((z - minZ) / (maxZ - minZ) * 2) - 1) * 3900 / 100) * 100;
+
+				if (normZ % 200 !== 0) normZ = normZ;
+				else normZ = normZ + 100;
+				if (normX % 200 !== 0) normX = normX;
+				else normX = normX + 100;
+
+				const gridX = ((normX + 3900) / 200);
+				const gridZ = ((normZ + 3900) / 200);
+				const position = gridZ * 40 + gridX;
+				return [normX, y, normZ, position];
+			});
+		}
+
+		//三次样条插值
+		function cubicSplineInterpolation(data, vertices) {
+			const n = data.length;
+			// 提取坐标点
+			const xs = data.map(d => d[3]); // 提取归一化后的索引值
+			const ys = data.map(d => d[1]); // 提取归一化后的高度值
+
+			// 三次样条插值系数初始化
+			const a = ys.slice(); // 系数a，初始化为y的值
+			const b = Array(n - 1).fill(0); // 系数b，初始为0
+			const d = Array(n - 1).fill(0); // 系数d，初始为0
+			const h = Array(n - 1).fill(0); // 相邻数据点之间的间距
+
+			// 计算相邻数据点之间的间距h
+			for (let i = 0; i < n - 1; i++) {
+				h[i] = xs[i + 1] - xs[i];
+			}
+
+			// 计算系数alpha
+			const alpha = Array(n - 1).fill(0);
+			for (let i = 1; i < n - 1; i++) {
+				// 公式来源：三次样条插值法
+				alpha[i] = (3 / h[i]) * (a[i + 1] - a[i]) - (3 / h[i - 1]) * (a[i] - a[i - 1]);
+			}
+
+			// 三次样条插值法的系数矩阵
+			const c = Array(n).fill(0); // 系数c
+			const l = Array(n).fill(0); // 系数l
+			const mu = Array(n).fill(0); // 系数mu
+			const z = Array(n).fill(0); // 系数z
+
+			// 设置边界条件，通常为自然边界条件，即二阶导数为0
+			l[0] = 1;
+			mu[0] = 0;
+			z[0] = 0;
+
+			// 通过追赶法求解系数
+			for (let i = 1; i < n - 1; i++) {
+				// l[i]表示系数矩阵对角线元素
+				l[i] = 2 * (xs[i + 1] - xs[i - 1]) - h[i - 1] * mu[i - 1];
+				// mu[i]表示系数矩阵的上三角元素
+				mu[i] = h[i] / l[i];
+				// z[i]表示系数矩阵的右端项
+				z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / l[i];
+			}
+
+			// 设置最后一个边界条件
+			l[n - 1] = 1;
+			z[n - 1] = 0;
+			c[n - 1] = 0;
+
+			// 反向迭代求解系数c, b, d
+			for (let j = n - 2; j >= 0; j--) {
+				// c[j]表示三次样条函数的二阶导数值
+				c[j] = z[j] - mu[j] * c[j + 1];
+				// b[j]表示三次样条函数的一阶导数值
+				b[j] = (a[j + 1] - a[j]) / h[j] - h[j] * (c[j + 1] + 2 * c[j]) / 3;
+				// d[j]表示三次样条函数的三阶导数值
+				d[j] = (c[j + 1] - c[j]) / (3 * h[j]);
+			}
+
+			// 遍历所有顶点，更新每个顶点的高度值
+			for (let i = 0; i < vertices.length / 3; i++) {
+				// 计算当前顶点的x和z坐标在归一化网格中的位置
+				let x = (i % worldWidth) * (7800 / worldWidth) - 3900;
+				let z = Math.floor(i / worldWidth) * (7800 / worldDepth) - 3900;
+
+				// 找到x和z坐标的对应索引
+				let idx = 0;
+				for (let j = 0; j < n - 1; j++) {
+					if (x >= xs[j] && x <= xs[j + 1]) {
+						idx = j;
+						break;
+					}
+				}
+
+				// 使用三次样条插值公式计算高度值
+				let height = a[idx] + b[idx] * (x - xs[idx]) + c[idx] * Math.pow((x - xs[idx]), 2) + d[idx] * Math.pow((x - xs[idx]), 3);
+
+				// 更新顶点数组中的高度值
+				vertices[i * 3 + 1] = height / 4000  // 调整高度比例
+			}
+			return vertices
+		}
+
+		function createPlaneStencilGroup(geometry, plane, renderOrder, color, planeGeom) {
+			const group = new THREE.Group();
+			const baseMat = new THREE.MeshBasicMaterial();
+			baseMat.depthWrite = false;
+			baseMat.depthTest = false;
+			baseMat.colorWrite = false;
+			baseMat.stencilWrite = true;
+			baseMat.stencilFunc = THREE.AlwaysStencilFunc;
+
+			// 后向面
+			const mat0 = baseMat.clone();
+			mat0.side = THREE.BackSide;
+			mat0.clippingPlanes = [plane];
+			mat0.stencilFail = THREE.IncrementWrapStencilOp;
+			mat0.stencilZFail = THREE.IncrementWrapStencilOp;
+			mat0.stencilZPass = THREE.IncrementWrapStencilOp;
+
+			const mesh0 = new THREE.Mesh(geometry, mat0);
+			mesh0.renderOrder = renderOrder; // 设置渲染顺序，确保后向面先渲染
+			group.add(mesh0);
+
+			// 前向面
+			const mat1 = baseMat.clone();
+			mat1.side = THREE.FrontSide;
+			mat1.clippingPlanes = [plane];
+			mat1.stencilFail = THREE.DecrementWrapStencilOp;
+			mat1.stencilZFail = THREE.DecrementWrapStencilOp;
+			mat1.stencilZPass = THREE.DecrementWrapStencilOp;
+
+			const mesh1 = new THREE.Mesh(geometry, mat1);
+			mesh1.renderOrder = renderOrder; // 设置渲染顺序，确保前向面后渲染
+			group.add(mesh1);
+
+			// 设置剖面的材质颜色
+			const planeMat = new THREE.MeshStandardMaterial({
+				color: color,
+				metalness: 0.1,
+				roughness: 0.75,
+				clippingPlanes: planes.filter(p => p !== plane),
+				stencilWrite: true,
+				stencilRef: 1,
+				stencilFunc: THREE.EqualStencilFunc,
+				stencilFail: THREE.ReplaceStencilOp,
+				stencilZFail: THREE.ReplaceStencilOp,
+				stencilZPass: THREE.ReplaceStencilOp,
+			});
+
+			const planeMesh = new THREE.Mesh(planeGeom, planeMat);
+
+			planeMesh.onAfterRender = function (renderer) {
+				renderer.clearStencil();
+			};
+			planeMesh.renderOrder = renderOrder + 1;
+			group.add(planeMesh);
+
+			return group;
+		}
+
+		function Clip(geometry, color) {
+			const planeGeom = new THREE.PlaneGeometry(10000, 10000);
+			let vertices = planeGeom.attributes.position.array;
+
+			for (let i = 0; i < planeGeom.attributes.position.array.length; i = i + 3) {
+				vertices[i + 2] = 0;
+			}
+
+			planeGeom.attributes.position.needsUpdate = true;
+
+			planeObjects = [];
+
+			for (let i = 0; i < 3; i++) {
+				const poGroup = new THREE.Group();
+				const plane = planes[i];
+				const stencilGroup = createPlaneStencilGroup(geometry, plane, i + 1, color, planeGeom);
+
+				const planeMat = new THREE.MeshStandardMaterial({
+					color: color,
+					transparent: true,
+					opacity: 1,
+					metalness: 0.1,
+					roughness: 0.75,
+					clippingPlanes: planes.filter(p => p !== plane),
+					stencilWrite: true,
+					stencilRef: 0,
+					stencilFunc: THREE.NotEqualStencilFunc,
+					stencilFail: THREE.ReplaceStencilOp,
+					stencilZFail: THREE.ReplaceStencilOp,
+					stencilZPass: THREE.ReplaceStencilOp,
+				});
+
+				const po = new THREE.Mesh(planeGeom, planeMat);
+				po.onAfterRender = function (renderer) {
+					renderer.clearStencil();
+				};
+				po.renderOrder = 5 - i;
+				object.add(stencilGroup);
+				poGroup.add(po);
+				planeObjects.push(po);
+				object.add(poGroup);
+			}
+
+			const material = new THREE.MeshStandardMaterial({
+				color: color,
+				transparent: true,
+				opacity: 1,
+				metalness: 0.1,
+				roughness: 0.75,
+				clippingPlanes: planes,
+				clipShadows: false,
+				side: THREE.DoubleSide,
+			});
+
+			const clippedColorFront = new THREE.Mesh(geometry, material);
+			clippedColorFront.renderOrder = 1;
+
+			scene.add(clippedColorFront)
+			xiashiheGroup.add(clippedColorFront);
+			// object.add(clippedColorFront)
+			xiashiheGroup.visible = params.showXiashihe;
+
+		}
+
+		function addLight() {
+			scene.add(new THREE.AmbientLight(0xffffff, 1)); // 添加环境光
+			const dirLight = new THREE.DirectionalLight(0xffffff, 2); // 添加方向光
+			dirLight.position.set(10000, 10000, 10000);
+			scene.add(dirLight);
+		}
+
+		function Renderer() {
+			renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true }); // 创建渲染器，启用抗锯齿和模板测试
+			renderer.setPixelRatio(window.devicePixelRatio); // 设置像素比
+			renderer.setSize(window.innerWidth, window.innerHeight); // 设置渲染器大小
+			renderer.setClearColor(0x263238); // 设置背景颜色
+			renderer.setAnimationLoop(animate); // 设置动画循环
+			renderer.shadowMap.enabled = true; // 启用阴影
+			renderer.localClippingEnabled = true; // 启用本地裁剪
+			document.body.appendChild(renderer.domElement);
+
+			// 初始化射线投射器和鼠标向量
+			raycaster = new THREE.Raycaster();
+			mouse = new THREE.Vector2();
+			// 添加鼠标点击事件监听器
+			renderer.domElement.addEventListener('mousedown', onMouseDown, false);
+			window.addEventListener('resize', onWindowResize); // 添加窗口大小变化的监听器
+		}
+
+		function Controls() {
+			const controls = new OrbitControls(camera, renderer.domElement); // 创建轨道控制器
+			controls.minDistance = 1; // 设置最小缩放距离
+			controls.maxDistance = 50000; // 设置最大缩放距离
+			controls.update();
+		}
+
+		function addGUI() {
+			const Holes = gui.addFolder('钻孔');
+			Holes.add(params, 'showDrillHoles').name('显示钻孔').onChange(function (value) {
+				drillHolesGroup.visible = value;
+			});
+			Holes.add(params, 'drillHolesOpacity', 0, 1).name('钻孔透明度').step(0.01).onChange(function (value) {
+				drillHolesGroup.children.forEach(child => {
+					if (child.material) {
+						child.material.opacity = value;
+					}
+				});
+			});
+			Holes.close();
+
+			// 添加显示地形的选项
+			const terrainFolder = gui.addFolder('外部');
+			terrainFolder.add(params, 'showTopBottom').name('显示地形').onChange(function (value) {
+				topBottomGroup.visible = value;
+			});
+			terrainFolder.add(params, 'topBottomOpacity', 0, 1).name('透明度').step(0.01).onChange(function (value) {
+				topBottomGroup.children.forEach(child => {
+					if (child.material) {
+						child.material.opacity = value;
+					}
+				});
+			});
+			terrainFolder.close(); // 默认打开地形控制文件夹
+
+			const xiashiheFolder = gui.addFolder('内部');
+			xiashiheFolder.add(params, 'showXiashihe').name('显示').onChange(function (value) {
+				xiashiheGroup.visible = value;
+			});
+			xiashiheFolder.add(params, 'xiashiheOpacity', 0, 1).name('透明度').step(0.01).onChange(function (value) {
+				xiashiheGroup.children.forEach(child => {
+					console.log(child);
+					if (child.material) {
+						child.material.opacity = value;
+					}
+				});
+			});
+			xiashiheFolder.close();
+
+			const planeZ = gui.addFolder('切割面'); // 添加planeZ的文件夹
+			planeZ.add(params.planeZ, 'displayHelper').onChange(v => planeHelpers[2].visible = v); // 添加显示辅助线的选项
+			planeZ.add(params.planeZ, 'constant').min(-8000).max(8000).onChange(d => planes[2].constant = d); // 添加constant的滑动条
+			planeZ.add(params.planeZ, 'negated').onChange(() => {
+				planes[2].negate(); // 反转切割面
+				params.planeZ.constant = planes[2].constant; // 更新constant值
+			});
+			planeZ.open();
+
+			// 添加对平面法向量的控制
+			planeZ.add(planes[2].normal, 'x').min(-1).max(1).step(0.01).name('normal.x').onChange(updatePlaneNormals);
+			planeZ.add(planes[2].normal, 'y').min(-1).max(1).step(0.01).name('normal.y').onChange(updatePlaneNormals);
+			planeZ.add(planes[2].normal, 'z').min(-1).max(1).step(0.01).name('normal.z').onChange(updatePlaneNormals);
+			planeZ.close();
+		}
+
+		// 更新平面法向量
+		function updatePlaneNormals() {
+			planes.forEach((plane, i) => {
+				planeHelpers[i].plane = plane;
+			});
+		}
+
+		function onWindowResize() {
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+
+			camera2.aspect = window.innerWidth / window.innerHeight;
+			camera2.updateProjectionMatrix();
+
+			camera3.aspect = window.innerWidth / window.innerHeight;
+			camera3.updateProjectionMatrix();
+
+			renderer.setSize(window.innerWidth, window.innerHeight);
+
+			insetWidth = window.innerWidth / 4;
+			insetHeight = window.innerHeight / 4;
+			sideWidth = window.innerWidth / 4;
+			sideHeight = window.innerHeight / 4;
+		}
+
+		function animate() {
+			for (let i = 0; i < planeObjects.length; i++) {
+				const plane = planes[i];
+				const po = planeObjects[i];
+				plane.coplanarPoint(po.position);
+				po.lookAt(
+					po.position.x - plane.normal.x,
+					po.position.y - plane.normal.y,
+					po.position.z - plane.normal.z
+				);
+			}
+
+			// 渲染主场景
+			renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+			renderer.setScissor(0, 0, window.innerWidth, window.innerHeight);
+			renderer.setScissorTest(true);
+			renderer.setClearColor(0xbfd1e5);
+			renderer.render(scene, camera);
+
+			// 固定辅助摄像机在顶部视角
+			insetWidth = window.innerWidth / 7;  // 辅助视口的宽度
+			insetHeight = window.innerHeight / 7;  // 辅助视口的高度
+			renderer.setViewport(20, 20, insetWidth, insetHeight);
+			renderer.setScissor(20, 20, insetWidth, insetHeight);
+			renderer.setScissorTest(true);
+			renderer.setClearColor(0xbfd1e5);
+
+			// 根据选择渲染不同的摄像机视角
+			if (selectedViewport === 'top') {
+				renderer.render(sceneInset, camera2); // 渲染顶部视图
+			} else if (selectedViewport === 'side') {
+				renderer.render(sceneInset, camera3); // 渲染侧视图
+			}
+		}
+
+		function onMouseDown(event) {
+			event.preventDefault(); // 阻止默认的鼠标点击事件
+			// 获取渲染器DOM元素的边界矩形
+			const rect = renderer.domElement.getBoundingClientRect();
+
+			// 辅助视口的位置和大小
+			const insetRect = {
+				left: 20, // 辅助视口的左上角X坐标
+				top: window.innerHeight - insetHeight - 20, // 辅助视口的左上角Y坐标
+				width: insetWidth, // 辅助视口的宽度
+				height: insetHeight // 辅助视口的高度
+			};
+
+			// 检查鼠标是否在辅助视口内
+			if (event.clientX >= insetRect.left &&
+				event.clientX <= insetRect.left + insetRect.width &&
+				event.clientY >= insetRect.top &&
+				event.clientY <= insetRect.top + insetRect.height
+			) {
+				console.log("鼠标在辅助视口中");
+				// 将鼠标位置转换为辅助视口中的归一化设备坐标
+				const mouseXInInset = ((event.clientX - insetRect.left) / insetRect.width) * 2 - 1;
+				const mouseYInInset = -((event.clientY - insetRect.top) / insetRect.height) * 2 + 1;
+
+				// 根据选择渲染不同的摄像机视角，并使用辅助摄像机和鼠标位置更新射线投射器（raycaster）
+				if (selectedViewport === 'top') {
+					raycaster.setFromCamera({ x: mouseXInInset, y: mouseYInInset }, camera2);
+				} else if (selectedViewport === 'side') {
+					raycaster.setFromCamera({ x: mouseXInInset, y: mouseYInInset }, camera3);
+				}
+
+				// 检测射线与场景中所有子对象的相交情况
+				const intersects = raycaster.intersectObjects(scene.children, true);
+
+				if (intersects.length > 0) { // 如果有交点
+					console.log("坐标点：");
+					const point = intersects[0].point; // 获取第一个交点的坐标（即与射线最近的交点）
+					console.log(point);
+					points.push(point); // 将交点坐标添加到 points 数组中
+					createRedDot(point); // 在点击位置创建一个红色的小圆点
+
+					// 添加可视化射线
+					// visualizeRay(raycaster.ray);
+
+					if (points.length === 2) { // 如果已经点击了两个点
+						drawLine(); // 画出两个点之间的连线
+						if (selectedViewport === 'top') {
+							drawPlaneTop(); // 生成并画出通过这两个点的平面
+						} else if (selectedViewport === 'side') {
+							drawPlaneSide(); // 生成并画出通过这两个点的平面
+						}
+
+						points = []; // 清空 points 数组，以便下一次点击使用
+					}
+				}
+			}
+		}
+
+		// 添加射线可视化的函数
+		function visualizeRay(ray) {
+			const origin = ray.origin;
+			const direction = ray.direction.clone().normalize();
+			const length = 80000; // 设置射线长度，可以根据实际需要进行调整
+			const color = 0xff0000; // 红色
+
+			const arrowHelper = new THREE.ArrowHelper(direction, origin, length, color);
+			scene.add(arrowHelper); // 将 ArrowHelper 添加到场景中
+		}
+		// 辅助线
+		function drawLine() {
+
+			if (line) {
+				scene.remove(line);
+			}
+
+			const geometry = new THREE.BufferGeometry().setFromPoints(points);
+			const material = new THREE.LineBasicMaterial({ color: 0xff0000 });
+			line = new THREE.Line(geometry, material);
+
+			sceneInset.add(line);
+		}
+
+		// 辅助点
+		function createRedDot(position) {
+			const dotGeometry = new THREE.SphereGeometry(100, 32, 32);
+			const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+			const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+			dot.position.copy(position);
+			sceneInset.add(dot);
+			// if (dot) {
+			// 	scene.remove(dot);
+			// }
+		}
+
+		// 辅助面(top)
+		function drawPlaneTop() {
+			if (plane) {
+				scene.remove(plane);
+			}
+			console.log("执行了drawPlaneTop函数");
+
+			const vertices = [];
+			points.forEach(point => {
+				vertices.push(point.x, point.y, point.z);
+				vertices.push(point.x, 0, point.z); // 垂直向下投影点
+			});
+
+			// 定义切割面
+			const geometry = new THREE.BufferGeometry();
+			geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+			const indices = [0, 1, 3, 0, 3, 2]; // 根据顶点生成面的索引
+
+			geometry.setIndex(indices);
+			geometry.computeVertexNormals();
+
+			const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide, opacity: 0.5, transparent: true });
+			plane = new THREE.Mesh(geometry, material);
+
+			scene.add(plane);
+
+			// 计算法向量并单位化
+			const vector1 = new THREE.Vector3().subVectors(points[1], points[0]);
+			const vector2 = new THREE.Vector3().subVectors(new THREE.Vector3(points[1].x, 0, points[1].z), points[0]);
+			const normal = new THREE.Vector3().crossVectors(vector1, vector2).normalize();
+
+			// 将法向量赋值给切割面的法向量
+			planes[2].normal.copy(normal);
+			// 更新 GUI 面板的值
+			planes[2].constant = calculateDistance(vertices)
+
+			params.planeZ.normalX = normal.x;
+			params.planeZ.normalY = normal.y;
+			params.planeZ.normalZ = normal.z;
+
+		}
+		// 辅助面(side)
+		function drawPlaneSide() {
+			if (plane) {
+				scene.remove(plane);
+			}
+			console.log("执行了drawPlane函数");
+
+			const vertices = [];
+			points.forEach(point => {
+				vertices.push(point.x, point.y, point.z);
+				vertices.push(-point.x, point.y, point.z); // 垂直向下投影点
+			});
+
+			// 定义切割面
+			const geometry = new THREE.BufferGeometry();
+			geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+
+			const indices = [0, 1, 3, 0, 3, 2]; // 根据顶点生成面的索引
+
+			geometry.setIndex(indices);
+			geometry.computeVertexNormals();
+
+			const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide, opacity: 0.5, transparent: true });
+			plane = new THREE.Mesh(geometry, material);
+			scene.add(plane);
+
+			// 计算法向量并单位化
+			const vector1 = new THREE.Vector3().subVectors(points[1], points[0]);
+			const vector2 = new THREE.Vector3().subVectors(new THREE.Vector3(-points[1].x, points[1].y, points[1].z), points[0]);
+			const normal = new THREE.Vector3().crossVectors(vector1, vector2).normalize();
+			console.log(`单位化面向量: `)
+			console.log(normal);
+			// 将法向量赋值给切割面的法向量
+			planes[2].normal.copy(normal);
+			// 更新 GUI 面板的值
+			planes[2].constant = calculateDistance(vertices);
+
+
+			params.planeZ.normalX = normal.x;
+			params.planeZ.normalY = normal.y;
+			params.planeZ.normalZ = normal.z;
+
+		}
+
+		//计算点到面的距离
+		function calculateDistance(vertices) {
+			// 提取点坐标
+			let A = [vertices[0], vertices[1], vertices[2]];
+			let B = [vertices[3], vertices[4], vertices[5]];
+			let C = [vertices[6], vertices[7], vertices[8]];
+
+			// 计算向量 AB 和 AC
+			let AB = [
+				B[0] - A[0],
+				B[1] - A[1],
+				B[2] - A[2]
+			];
+			let AC = [
+				C[0] - A[0],
+				C[1] - A[1],
+				C[2] - A[2]
+			];
+
+			// 计算法向量 N = AB × AC
+			let N = [
+				AB[1] * AC[2] - AB[2] * AC[1],
+				AB[2] * AC[0] - AB[0] * AC[2],
+				AB[0] * AC[1] - AB[1] * AC[0]
+			];
+
+			// 平面方程 Ax + By + Cz + D = 0 中的 A, B, C
+			let A_plane = N[0];
+			let B_plane = N[1];
+			let C_plane = N[2];
+
+			// 计算常数项 D 使用点 A
+			let D_plane = -(N[0] * A[0] + N[1] * A[1] + N[2] * A[2]);
+
+			// 计算 Ax + By + Cz + D 对于原点 (0, 0, 0)
+			let origin_value = A_plane * 0 + B_plane * 0 + C_plane * 0 + D_plane;
+
+			// 计算带有正负符号的距离
+			let distance = -origin_value / Math.sqrt(A_plane * A_plane + B_plane * B_plane + C_plane * C_plane);
+			return distance;
+		}
+
+
+	</script>
+
+</body>
+
+</html>
