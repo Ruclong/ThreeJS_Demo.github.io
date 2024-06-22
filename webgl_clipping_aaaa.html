@@ -2,10 +2,11 @@
 <html lang="en">
 
 <head>
-	<title>切割测试</title> <!-- 网页标题 -->
+	<title>三维图</title> <!-- 网页标题 -->
 	<meta charset="utf-8"> <!-- 字符编码设置为UTF-8，支持中文 -->
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 	<!-- 视口设置 -->
+	<link type="text/css" rel="stylesheet" href="main.css"> <!-- 引入外部样式表 -->
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 	<script src="https://d3js.org/d3.v6.min.js"></script>
 	<!-- 引入d3-delaunay库 -->
@@ -41,7 +42,7 @@
 			selectedViewport = event.target.value; // 更新选择的视口类型
 		});
 		//主摄像机，场景
-		let camera, scene, sceneInset, renderer, object;
+		let camera, scene, sceneInsetTop, sceneInsetSide, renderer, object;
 		let planes, planeObjects, planeHelpers;
 		let camera2, camera3; // 辅助相机
 		let raycaster, mouse, points = [], line;
@@ -245,7 +246,9 @@
 			// 创建主场景
 			scene = new THREE.Scene();
 			// 创建辅助场景，用于显示左下角的小视口
-			sceneInset = new THREE.Scene();
+			sceneInsetTop = new THREE.Scene();
+			sceneInsetSide = new THREE.Scene();
+
 
 			// 创建透视摄像机
 			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 50000);
@@ -254,7 +257,7 @@
 
 			// 初始化辅助顶部视角摄像机
 			camera2 = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 50000);
-			camera2.position.set(0, 11000, 0);
+			camera2.position.set(0, 12000, 0);
 			camera2.lookAt(0, 0, 0);
 
 			// 初始化侧面视角摄像机
@@ -347,13 +350,13 @@
 			// 添加控制器
 			Controls();
 
-			// 将网格辅助器添加到辅助场景中(侧面)
+			// 将网格辅助器添加到辅助场景中(顶部)
 			const insetGridHelperSide = new THREE.GridHelper(10000, 37);
 			insetGridHelperSide.material.transparent = true;
 			insetGridHelperSide.material.opacity = 1;
 			insetGridHelperSide.position.x = -11000;
 			insetGridHelperSide.rotateZ(Math.PI / 2)
-			sceneInset.add(insetGridHelperSide);
+			sceneInsetSide.add(insetGridHelperSide);
 
 			// 将网格辅助器添加到辅助场景中(侧面)
 			const GridHelperTop = new THREE.GridHelper(10000, 37);
@@ -361,10 +364,11 @@
 			GridHelperTop.material.opacity = 1;
 			GridHelperTop.position.y = 10000;
 			GridHelperTop.rotateY(Math.PI / 2)
-			sceneInset.add(GridHelperTop);
+			sceneInsetTop.add(GridHelperTop);
 			// 将主场景内容复制到辅助场景中
 			scene.children.forEach(child => {
-				sceneInset.add(child.clone());
+				sceneInsetTop.add(child.clone());
+				sceneInsetSide.add(child.clone());
 			});
 		}
 
@@ -1172,9 +1176,9 @@
 
 			// 根据选择渲染不同的摄像机视角
 			if (selectedViewport === 'top') {
-				renderer.render(sceneInset, camera2); // 渲染顶部视图
+				renderer.render(sceneInsetTop, camera2); // 渲染顶部视图
 			} else if (selectedViewport === 'side') {
-				renderer.render(sceneInset, camera3); // 渲染侧视图
+				renderer.render(sceneInsetSide, camera3); // 渲染侧视图
 			}
 		}
 
@@ -1257,16 +1261,24 @@
 			const material = new THREE.LineBasicMaterial({ color: 0xff0000 });
 			line = new THREE.Line(geometry, material);
 
-			sceneInset.add(line);
+			if (selectedViewport === 'top') {
+				sceneInsetTop.add(line);
+			} else if (selectedViewport === 'side') {
+				sceneInsetSide.add(line);
+			}
 		}
-
 		// 辅助点
 		function createRedDot(position) {
 			const dotGeometry = new THREE.SphereGeometry(100, 32, 32);
 			const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 			const dot = new THREE.Mesh(dotGeometry, dotMaterial);
 			dot.position.copy(position);
-			sceneInset.add(dot);
+
+			if (selectedViewport === 'top') {
+				sceneInsetTop.add(dot);
+			} else if (selectedViewport === 'side') {
+				sceneInsetSide.add(dot);
+			}
 			// if (dot) {
 			// 	scene.remove(dot);
 			// }
